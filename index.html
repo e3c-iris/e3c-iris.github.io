@@ -3,30 +3,35 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#101a18">
+    <meta name="theme-color" content="#080a0c" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f3f5f0" media="(prefers-color-scheme: light)">
     <meta name="description" content="IRIS — Event sensing project.">
     <title>IRIS — Event sensing project</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500&display=swap" rel="stylesheet">
     <style>
-      :root { color-scheme: dark; }
+      :root { color-scheme: light dark; }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100svh;
         display: grid;
         place-items: center;
-        background: #101a18;
+        background: radial-gradient(ellipse at 50% 42%, #151b1c 0%, #0c1012 38%, #080a0c 75%);
         color: #edf1e8;
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       }
       main { padding: 3rem 1.5rem; text-align: center; }
-      .mark { width: 104px; height: 104px; margin: 0 auto 2.5rem; color: #b4c6a2; }
-      .mark svg { display: block; width: 100%; height: 100%; }
+      .mark { width: 200px; max-width: 100%; margin: 0 auto 2.5rem; }
+      .mark img { display: block; width: 100%; height: auto; }
       h1 {
         margin: 0;
-        padding-left: .25em;
+        padding-left: .14em;
+        font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
         font-size: clamp(4rem, 15vw, 7rem);
-        font-weight: 400;
-        letter-spacing: .25em;
+        font-weight: 500;
+        letter-spacing: .14em;
         line-height: 1.1;
       }
       p {
@@ -37,21 +42,43 @@
         line-height: 1.8;
         text-transform: uppercase;
       }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: .6rem;
+        margin-top: 2rem;
+        padding: .5rem .85rem;
+        border: 1px solid #ffffff18;
+        border-radius: 999px;
+        color: #8c9ba4;
+        font-size: .65rem;
+        letter-spacing: .12em;
+      }
+      .status::before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #4f85bf;
+      }
+      @media (prefers-color-scheme: light) {
+        body {
+          background: radial-gradient(ellipse at 50% 42%, #ffffff 0%, #f3f5f0 60%, #e8ece5 100%);
+          color: #202c25;
+        }
+        p { color: #536359; }
+        .status { color: #53616c; border-color: #202c2526; }
+      }
     </style>
   </head>
   <body>
     <main>
       <div class="mark" aria-hidden="true">
-        <svg viewBox="0 0 104 104" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="52" cy="52" r="47" stroke="currentColor" stroke-opacity=".2"/>
-          <circle cx="52" cy="52" r="32" stroke="currentColor" stroke-opacity=".45"/>
-          <circle cx="52" cy="52" r="17" stroke="currentColor" stroke-opacity=".75"/>
-          <circle cx="52" cy="52" r="4" fill="currentColor"/>
-          <circle cx="78" cy="33" r="3" fill="currentColor"/>
-        </svg>
+        <img src="iris-logo.png" width="960" height="960" alt="">
       </div>
       <h1>IRIS</h1>
       <p>Event sensing project</p>
+      <p class="status">In stealth mode</p>
     </main>
   </body>
 </html>

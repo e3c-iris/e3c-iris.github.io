@@ -14,27 +14,43 @@
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        min-height: 100svh;
-        display: grid;
-        place-items: center;
         background: #171321;
         color: #edf1e8;
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       }
-      main { padding: 3rem 1.5rem; text-align: center; }
-      .mark { width: 260px; max-width: 100%; margin: 0 auto 2.5rem; }
+      #field {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+      }
+      #spark {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+      }
+      main {
+        position: relative;
+        z-index: 1;
+        min-height: 100svh;
+        display: grid;
+        grid-template-rows: 1fr auto;
+        text-align: center;
+        pointer-events: none;
+      }
+      .hero { display: grid; place-items: center; padding: 2rem 1rem 0; }
+      .mark { width: clamp(170px, 28vmin, 260px); }
       .mark img { display: block; width: 100%; height: auto; }
-      h1 {
-        margin: 0;
-        padding-left: .14em;
-        font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
-        font-size: clamp(4rem, 15vw, 7rem);
-        font-weight: 500;
-        letter-spacing: .14em;
-        line-height: 1.1;
+      footer {
+        padding: 2.5rem 1.5rem 2.5rem;
+        background: linear-gradient(to bottom, #17132100, #171321e6 45%);
       }
       p {
-        margin: 1.5rem 0 0;
+        margin: 0;
         color: #aab9b0;
         font-size: .8rem;
         letter-spacing: .16em;
@@ -45,7 +61,7 @@
         display: inline-flex;
         align-items: center;
         gap: .6rem;
-        margin-top: 2rem;
+        margin-top: 1.25rem;
         padding: .5rem .85rem;
         border: 1px solid #ffffff18;
         border-radius: 999px;
@@ -63,13 +79,441 @@
     </style>
   </head>
   <body>
+    <canvas id="field" aria-hidden="true"></canvas>
+    <canvas id="spark" aria-hidden="true"></canvas>
     <main>
-      <div class="mark" aria-hidden="true">
-        <img src="iris-logo-transparent.png" width="960" height="960" alt="">
+      <div class="hero">
+        <div class="mark" aria-hidden="true">
+          <img src="iris-logo-transparent.png" width="960" height="960" alt="">
+        </div>
       </div>
-      <!-- <h1>IRIS</h1> -->
-      <p>Event sensing project</p>
-      <p class="status">In stealth mode</p>
+      <footer>
+        <p>Event sensing project</p>
+        <p class="status">In stealth mode</p>
+      </footer>
     </main>
+    <script>
+      // Iris field: radial fibers of leaky integrate-and-fire neurons around the logo.
+      // The outline slowly morphs between an eye's iris (circle) and an iris flower
+      // (three falls + three standards). Spikes travel inward along each fiber,
+      // jump onto the logo's own dots and hop inward to the pupil; pointer motion
+      // acts as an event-camera stimulus.
+      (() => {
+        const field = document.getElementById('field');
+        const ctx = field.getContext('2d');
+        const spark = document.getElementById('spark');
+        const sctx = spark.getContext('2d');
+        const mark = document.querySelector('.mark');
+        const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        const TAU = Math.PI * 2;
+        const PHI0 = -Math.PI / 2;
+        const MORPH_PERIOD = 40;
+        // How far the eye opens into the flower: 1 is the full petal shape.
+        const FLOWER_STRENGTH = 0.7;
+        // Japanese iris (Iris ensata), front view: three broad, round, ruffled falls
+        // spreading down and outward, with small narrow standards between them.
+        // Each petal is a disk (center distance d, radius rho) relative to rOut.
+        const DEG = Math.PI / 180;
+        const PETALS = [
+          { at: 90, d: 0.6, rho: 0.4, ruffle: 1 },
+          { at: 210, d: 0.6, rho: 0.4, ruffle: 1 },
+          { at: 330, d: 0.6, rho: 0.4, ruffle: 1 },
+          { at: 270, d: 0.46, rho: 0.15, ruffle: 0 },
+          { at: 30, d: 0.46, rho: 0.15, ruffle: 0 },
+          { at: 150, d: 0.46, rho: 0.15, ruffle: 0 },
+        ];
+        const INNER = [197, 166, 235];
+        const OUTER = [104, 76, 158];
+
+        // Dots of the logo's eye (x, y, r) in its 320-unit viewBox, from iris-logo-transparent.svg.
+        const LOGO = [125,110,3.5,145,110,3.5,175,110,3.5,195,110,3.5,100,120,3.5,120,120,3.5,200,120,3.5,220,120,3.5,85,130,3.5,105,130,3.5,215,130,3.5,235,130,3.5,60,140,3.5,80,140,3.5,100,140,3.5,220,140,3.5,240,140,3.5,260,140,3.5,45,150,3.5,65,150,3.5,85,150,3.5,105,150,3.5,215,150,3.5,235,150,3.5,255,150,3.5,275,150,3.5,20,160,3.5,40,160,3.5,60,160,3.5,80,160,3.5,100,160,3.5,220,160,3.5,240,160,3.5,260,160,3.5,280,160,3.5,300,160,3.5,45,170,3.5,65,170,3.5,85,170,3.5,105,170,3.5,215,170,3.5,235,170,3.5,255,170,3.5,275,170,3.5,60,180,3.5,80,180,3.5,100,180,3.5,220,180,3.5,240,180,3.5,260,180,3.5,85,190,3.5,105,190,3.5,215,190,3.5,235,190,3.5,100,200,3.5,120,200,3.5,200,200,3.5,220,200,3.5,125,210,3.5,145,210,3.5,175,210,3.5,195,210,3.5,198,160,4.5,196.14,171.74,4.5,190.74,182.34,4.5,182.34,190.74,4.5,171.74,196.14,4.5,160,198,4.5,148.26,196.14,4.5,137.66,190.74,4.5,129.26,182.34,4.5,123.86,171.74,4.5,122,160,4.5,123.86,148.26,4.5,129.26,137.66,4.5,137.66,129.26,4.5,148.26,123.86,4.5,160,122,4.5,171.74,123.86,4.5,182.34,129.26,4.5,190.74,137.66,4.5,196.14,148.26,4.5,184,160,4,180.78,172,4,172,180.78,4,160,184,4,148,180.78,4,139.22,172,4,136,160,4,139.22,148,4,148,139.22,4,160,136,4,172,139.22,4,180.78,148,4,171,160,3.8,165.5,169.53,3.8,154.5,169.53,3.8,149,160,3.8,154.5,150.47,3.8,165.5,150.47,3.8,160,160,3.5,160,100,3.5,160,220,3.5,120,100,3.5,140,100,3.5,180,100,3.5,200,100,3.5,105,110,3.5,215,110,3.5,80,120,3.5,240,120,3.5,65,130,3.5,255,130,3.5,40,140,3.5,280,140,3.5,40,180,3.5,280,180,3.5,65,190,3.5,255,190,3.5,80,200,3.5,240,200,3.5,105,210,3.5,215,210,3.5,120,220,3.5,140,220,3.5,180,220,3.5,200,220,3.5];
+        const L = LOGO.length / 3;
+        const PUPIL = 100; // the dot at (160, 160)
+        const TEXT_BOX = [72, 236, 248, 304]; // the IRIS lettering, in the same units, with margin
+        const SPIKE_SPEED = 110; // px per second, matching a hop along a fiber
+        const logoX = new Float32Array(L), logoY = new Float32Array(L);
+        const logoLast = new Float32Array(L).fill(-10);
+        // Each logo dot passes its spike to the nearest dot that sits closer to the pupil.
+        const logoNext = new Int16Array(L).fill(-1);
+        for (let j = 0; j < L; j++) {
+          const dj = Math.hypot(LOGO[j * 3] - 160, LOGO[j * 3 + 1] - 160);
+          let best = Infinity;
+          for (let n = 0; n < L; n++) {
+            const dn = Math.hypot(LOGO[n * 3] - 160, LOGO[n * 3 + 1] - 160);
+            if (dn > dj - 6) continue;
+            const gap = Math.hypot(LOGO[n * 3] - LOGO[j * 3], LOGO[n * 3 + 1] - LOGO[j * 3 + 1]);
+            if (gap < best) { best = gap; logoNext[j] = n; }
+          }
+        }
+
+        let W = 0, H = 0, dpr = 1, cx = 0, cy = 0, rIn = 0, rOut = 0, logoScale = 1;
+        let S = 0, K = 0, N = 0;
+        let v, shown, refr, last, px, py, jitter, petalR, isFall, entry, innerR;
+        let kColors = [];
+        let events = [];
+        let logoEvents = [];
+        let now = 0, nextVolley = 1.2;
+        const pointer = { x: 0, y: 0, seen: false, energy: 0 };
+
+        const glow = sprite('245,239,255');
+        const gold = sprite('242,210,122');
+
+        function sprite(rgb) {
+          const c = document.createElement('canvas');
+          c.width = c.height = 64;
+          const g = c.getContext('2d');
+          const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+          grad.addColorStop(0, `rgba(${rgb},1)`);
+          grad.addColorStop(0.22, `rgba(${rgb},.55)`);
+          grad.addColorStop(1, `rgba(${rgb},0)`);
+          g.fillStyle = grad;
+          g.fillRect(0, 0, 64, 64);
+          return c;
+        }
+
+        function locate() {
+          const b = mark.getBoundingClientRect();
+          cx = b.left + b.width / 2;
+          cy = b.top + b.height / 2;
+          rIn = b.width * 0.56;
+          logoScale = b.width / 320;
+          for (let j = 0; j < L; j++) {
+            logoX[j] = b.left + LOGO[j * 3] * logoScale;
+            logoY[j] = b.top + LOGO[j * 3 + 1] * logoScale;
+          }
+        }
+
+        function layout() {
+          dpr = Math.min(window.devicePixelRatio || 1, 2);
+          W = innerWidth;
+          H = innerHeight;
+          field.width = W * dpr;
+          field.height = H * dpr;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          spark.width = W * dpr;
+          spark.height = H * dpr;
+          sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          locate();
+          rOut = Math.max(rIn + 100, Math.min(W, H) * 0.47);
+          const nextS = 6 * Math.round(Math.min(120, Math.max(54, rOut * 0.26)) / 6);
+          const nextK = Math.max(7, Math.min(18, Math.round((rOut - rIn * 0.6) / 20)));
+          if (nextS !== S || nextK !== K) allocate(nextS, nextK);
+        }
+
+        function allocate(s, k) {
+          S = s; K = k; N = S * K;
+          v = new Float32Array(N);
+          shown = new Float32Array(N);
+          refr = new Float32Array(N);
+          last = new Float32Array(N).fill(-10);
+          px = new Float32Array(N);
+          py = new Float32Array(N);
+          jitter = new Float32Array(S);
+          petalR = new Float32Array(S);
+          isFall = new Uint8Array(S);
+          entry = new Int16Array(S);
+          innerR = new Float32Array(S);
+          for (let i = 0; i < S; i++) {
+            const theta = PHI0 + (i / S) * TAU;
+            jitter[i] = 0.94 + Math.random() * 0.1;
+            // Entry point into the logo: the outermost eye dot lying closest to this fiber's direction.
+            let bestScore = Infinity;
+            for (let j = 0; j < L; j++) {
+              const dx = LOGO[j * 3] - 160, dy = LOGO[j * 3 + 1] - 160;
+              let delta = Math.abs(Math.atan2(dy, dx) - theta) % TAU;
+              if (delta > Math.PI) delta = TAU - delta;
+              const score = delta * 300 - Math.hypot(dx, dy);
+              if (score < bestScore) { bestScore = score; entry[i] = j; }
+            }
+            // The fiber starts just outside its entry dot, so the inner ring hugs the eye,
+            // but never on top of the IRIS lettering below it.
+            const e = entry[i];
+            let rho = Math.hypot(LOGO[e * 3] - 160, LOGO[e * 3 + 1] - 160) + 12;
+            const inText = (r) => {
+              const x = 160 + r * Math.cos(theta), y = 160 + r * Math.sin(theta);
+              return x > TEXT_BOX[0] && x < TEXT_BOX[2] && y > TEXT_BOX[1] && y < TEXT_BOX[3];
+            };
+            while (inText(rho)) rho += 2;
+            innerR[i] = rho;
+            let best = 0;
+            for (const p of PETALS) {
+              let delta = (theta - p.at * DEG) % TAU;
+              if (delta > Math.PI) delta -= TAU;
+              if (delta < -Math.PI) delta += TAU;
+              const sin = p.d * Math.sin(delta);
+              if (Math.abs(delta) > Math.PI / 2 || Math.abs(sin) >= p.rho) continue;
+              let r = p.d * Math.cos(delta) + Math.sqrt(p.rho * p.rho - sin * sin);
+              if (p.ruffle) {
+                r *= 1 + 0.025 * Math.sin(delta * 11) * Math.min(1, Math.abs(delta) * 3);
+                if (Math.abs(delta) < 14 * DEG) isFall[i] = 1;
+              }
+              best = Math.max(best, r);
+            }
+            petalR[i] = best;
+          }
+          kColors = [];
+          for (let j = 0; j < K; j++) {
+            const f = j / (K - 1);
+            const c = INNER.map((a, n) => Math.round(a + (OUTER[n] - a) * f));
+            kColors.push(`rgb(${c[0]},${c[1]},${c[2]})`);
+          }
+          events = [];
+          logoEvents = [];
+        }
+
+        function sendToLogo(fromX, fromY, to) {
+          const dist = Math.hypot(logoX[to] - fromX, logoY[to] - fromY);
+          logoEvents.push({ x0: fromX, y0: fromY, b: to, t0: now, t1: now + Math.max(0.12, dist / SPIKE_SPEED) });
+        }
+
+        function morph(t) {
+          const x = Math.min(1, Math.max(0, (0.5 - 0.5 * Math.cos((TAU * t) / MORPH_PERIOD)) * 1.4 - 0.2));
+          return x * x * (3 - 2 * x);
+        }
+
+        function geometry(m) {
+          const swirl = 0.05 * Math.sin(now * 0.04);
+          const breathe = 1 + 0.015 * Math.sin(now * 0.5);
+          for (let s = 0; s < S; s++) {
+            const theta = PHI0 + (s / S) * TAU;
+            const flower = Math.max(rIn * 1.08, rOut * petalR[s]);
+            const blend = m * FLOWER_STRENGTH;
+            const R = (rOut * jitter[s] * (1 - blend) + flower * blend) * breathe;
+            const r0 = innerR[s] * logoScale;
+            for (let k = 0; k < K; k++) {
+              const f = k / (K - 1);
+              // Spacing tightens toward the logo, as if the fibers converge into the eye.
+              const r = r0 + (R - r0) * Math.pow(f, 1.35);
+              const a = theta + swirl * f * f;
+              const i = s * K + k;
+              px[i] = cx + r * Math.cos(a);
+              py[i] = cy + r * Math.sin(a);
+            }
+          }
+        }
+
+        function fire(i) {
+          v[i] = 0;
+          refr[i] = 0.5;
+          last[i] = now;
+          const s = (i / K) | 0, k = i % K;
+          if (k > 0) {
+            const w = Math.random() < 0.9 ? 1.05 : 0.5;
+            events.push({ a: i, b: i - 1, t0: now, t1: now + 0.16 + Math.random() * 0.04, w });
+          } else if (Math.random() < 0.7) {
+            sendToLogo(px[i], py[i], entry[s]);
+          }
+          if (Math.random() < 0.2) {
+            const s2 = (s + (Math.random() < 0.5 ? 1 : S - 1)) % S;
+            events.push({ a: -1, b: s2 * K + k, t0: now, t1: now + 0.25, w: 0.35 });
+          }
+        }
+
+        function step(dt) {
+          now += dt;
+          const leak = Math.exp(-dt / 1.2);
+          const ease = 1 - Math.exp(-dt / 0.25);
+
+          if (now > nextVolley) {
+            const c = (Math.random() * S) | 0;
+            const half = 2 + ((Math.random() * S * 0.06) | 0);
+            for (let d = -half; d <= half; d++) {
+              const s = (c + d + S) % S;
+              events.push({ a: -1, b: s * K + K - 1, t0: now, t1: now + Math.abs(d) * 0.06 + Math.random() * 0.08, w: 1.3 });
+            }
+            nextVolley = now + 3 + Math.random() * 3;
+          }
+
+          for (let i = 0; i < N; i++) {
+            v[i] *= leak;
+            shown[i] += (v[i] - shown[i]) * ease;
+            if (refr[i] > 0) refr[i] -= dt;
+            if (Math.random() < 0.03 * dt) v[i] += 1.1;
+            if (i % K === K - 1 && Math.random() < 0.2 * dt) v[i] += 0.7;
+          }
+
+          if (pointer.energy > 0.01) {
+            const reach = 70;
+            for (let i = 0; i < N; i++) {
+              const d = Math.hypot(px[i] - pointer.x, py[i] - pointer.y);
+              if (d < reach) v[i] += pointer.energy * 0.5 * (1 - d / reach);
+            }
+            pointer.energy = 0;
+          }
+
+          const pending = [];
+          for (const e of events) {
+            if (e.t1 <= now) {
+              if (refr[e.b] <= 0) v[e.b] += e.w;
+            } else pending.push(e);
+          }
+          events = pending;
+
+          const travelling = [];
+          const arrived = [];
+          for (const e of logoEvents) (e.t1 <= now ? arrived : travelling).push(e);
+          logoEvents = travelling;
+          for (const e of arrived) {
+            logoLast[e.b] = now;
+            const n = logoNext[e.b];
+            if (n >= 0 && Math.random() < 0.92) sendToLogo(logoX[e.b], logoY[e.b], n);
+          }
+
+          for (let i = 0; i < N; i++) {
+            if (v[i] >= 1 && refr[i] <= 0) fire(i);
+          }
+        }
+
+        function draw(m) {
+          ctx.clearRect(0, 0, W, H);
+
+          // Fibers.
+          const fiber = ctx.createRadialGradient(cx, cy, rIn * 0.4, cx, cy, rOut * 1.05);
+          fiber.addColorStop(0, 'rgba(179,148,223,0.12)');
+          fiber.addColorStop(1, 'rgba(179,148,223,0)');
+          ctx.strokeStyle = fiber;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let s = 0; s < S; s++) {
+            const i0 = s * K;
+            ctx.moveTo(px[i0], py[i0]);
+            for (let k = 1; k < K; k++) ctx.lineTo(px[i0 + k], py[i0 + k]);
+          }
+          ctx.stroke();
+
+          // Neurons: brightness follows membrane potential.
+          for (let k = 0; k < K; k++) {
+            ctx.fillStyle = kColors[k];
+            const f = k / (K - 1);
+            // Dots shrink as they near the logo.
+            const size = 0.6 + 1.2 * Math.min(1, f * 2.2);
+            // Outer dots fade so the shape dissolves instead of ending on a hard edge.
+            const fade = 1 - 0.75 * f * f;
+            for (let s = 0; s < S; s++) {
+              const i = s * K + k;
+              ctx.globalAlpha = Math.min(1, (0.32 + 0.68 * shown[i]) * fade);
+              ctx.beginPath();
+              ctx.arc(px[i], py[i], size, 0, TAU);
+              ctx.fill();
+            }
+          }
+
+          ctx.globalCompositeOperation = 'lighter';
+
+          // Spike flashes. The base of each fall lights gold, like the iris flower's signal patch.
+          for (let i = 0; i < N; i++) {
+            const age = now - last[i];
+            if (age > 1.2) continue;
+            // Soft attack then slow decay, so flashes swell instead of popping.
+            const e = Math.min(1, age / 0.08) * Math.exp(-age / 0.32);
+            const s = (i / K) | 0, f = (i % K) / (K - 1);
+            const sz = (7 + 12 * Math.min(1, f * 2.2)) * (0.6 + 0.4 * e);
+            const golden = isFall[s] && f < 0.45 && m > 0.35;
+            ctx.globalAlpha = e * (golden ? m : 1);
+            ctx.drawImage(golden ? gold : glow, px[i] - sz / 2, py[i] - sz / 2, sz, sz);
+          }
+
+          // Spikes in transit along the fibers, each with a short fading tail.
+          for (const e of events) {
+            if (e.a < 0) continue;
+            const p = (now - e.t0) / (e.t1 - e.t0);
+            for (let j = 0; j < 4; j++) {
+              const q = p - j * 0.18;
+              if (q < 0) break;
+              const x = px[e.a] + (px[e.b] - px[e.a]) * q;
+              const y = py[e.a] + (py[e.b] - py[e.a]) * q;
+              const sz = 8 - j * 1.4;
+              ctx.globalAlpha = 0.7 * (1 - j / 4);
+              ctx.drawImage(glow, x - sz / 2, y - sz / 2, sz, sz);
+            }
+          }
+
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+
+          drawLogoSpikes();
+        }
+
+        // Drawn above the logo image: spikes crossing onto it and its dots lighting up.
+        function drawLogoSpikes() {
+          sctx.clearRect(0, 0, W, H);
+          sctx.globalCompositeOperation = 'lighter';
+
+          for (let j = 0; j < L; j++) {
+            const age = now - logoLast[j];
+            if (age > 1.2) continue;
+            const e = Math.min(1, age / 0.08) * Math.exp(-age / 0.32);
+            const pupil = j === PUPIL;
+            const sz = LOGO[j * 3 + 2] * logoScale * (pupil ? 9 : 5) * (0.7 + 0.3 * e);
+            sctx.globalAlpha = e * 0.9;
+            sctx.drawImage(glow, logoX[j] - sz / 2, logoY[j] - sz / 2, sz, sz);
+          }
+
+          for (const e of logoEvents) {
+            const p = (now - e.t0) / (e.t1 - e.t0);
+            const tail = 0.18 * Math.min(1, 0.2 / (e.t1 - e.t0));
+            for (let j = 0; j < 4; j++) {
+              const q = p - j * tail;
+              if (q < 0) break;
+              const x = e.x0 + (logoX[e.b] - e.x0) * q;
+              const y = e.y0 + (logoY[e.b] - e.y0) * q;
+              const sz = 8 - j * 1.4;
+              sctx.globalAlpha = 0.7 * (1 - j / 4);
+              sctx.drawImage(glow, x - sz / 2, y - sz / 2, sz, sz);
+            }
+          }
+
+          sctx.globalAlpha = 1;
+          sctx.globalCompositeOperation = 'source-over';
+        }
+
+        function frame(dt) {
+          locate();
+          const m = morph(now);
+          geometry(m);
+          step(dt);
+          draw(m);
+        }
+
+        layout();
+
+        if (reduceMotion) {
+          // Settle the network offline, then render a single still frame.
+          now = MORPH_PERIOD * 0.3;
+          geometry(morph(now));
+          for (let t = 0; t < 4; t += 1 / 30) step(1 / 30);
+          draw(morph(now));
+          addEventListener('resize', () => {
+            layout();
+            geometry(morph(now));
+            draw(morph(now));
+          });
+          return;
+        }
+
+        addEventListener('resize', layout);
+        addEventListener('pointermove', (e) => {
+          if (pointer.seen) {
+            const d = Math.hypot(e.clientX - pointer.x, e.clientY - pointer.y);
+            pointer.energy = Math.min(pointer.energy + d * 0.02, 1.5);
+          }
+          pointer.x = e.clientX;
+          pointer.y = e.clientY;
+          pointer.seen = true;
+        }, { passive: true });
+        addEventListener('pointerleave', () => { pointer.seen = false; });
+
+        let prev = performance.now();
+        function loop(t) {
+          const dt = Math.min(0.05, (t - prev) / 1000);
+          prev = t;
+          frame(dt);
+          requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+      })();
+    </script>
   </body>
 </html>
